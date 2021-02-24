@@ -11,15 +11,11 @@ from PIL import Image, ImageOps
 
 
 # assume that blocks are all equally sized
-def assemble(blocks, size):
-    image = Image.new('L', size)
-    height = 0
-    for row in blocks:
-        width = 0
-        for block in row:
-            image.paste(block, (width, height))
-            width += block.width
-        height += block.height
+def assemble(blocks, block_size):
+    image = Image.new('L', size=(block_size * blocks.shape[0], block_size * blocks.shape[1]))
+    for i in range(blocks.shape[0]):
+        for j in range(blocks.shape[1]):
+            image.paste(blocks[i, j], (i * block_size, j * block_size))
     return image
 
 
@@ -59,8 +55,8 @@ num_blocks = num_sets * num_pieces
 pairs = factor_pairs(num_blocks)
 ratios = [width / height for width, height in pairs]
 
-image = ImageOps.grayscale(replace_transparent(Image.open(image_path)))
-target_ratio = image.width / image.height
+target = ImageOps.grayscale(replace_transparent(Image.open(image_path)))
+target_ratio = target.width / target.height
 
 min_diff, min_pair = float('inf'), (-1, -1)
 for pair, ratio in zip(pairs, ratios):
@@ -70,8 +66,8 @@ for pair, ratio in zip(pairs, ratios):
 num_blocks_width, num_blocks_height = pair
 
 width, height = num_blocks_width * block_size, num_blocks_height * block_size
-image = image.resize((width, height), resample=Image.LANCZOS, reducing_gap=3)
-pixels = np.array(image)
+target = target.resize((width, height), resample=Image.LANCZOS, reducing_gap=3)
+pixels = np.array(target).T
 
 piece_paths = [
     os.path.join(piece_dir, 'Black-Bishop.png'),
@@ -133,13 +129,13 @@ model.update()
 model.optimize()
 
 
-solution = []
+solution = np.empty(shape=(num_blocks_width, num_blocks_height), dtype=object)
 for i in range(num_blocks_width):
-    solution.append([])
     for j in range(num_blocks_height):
         for k in range(len(pieces)):
             if x[i, j, k].X:
-                solution[i].append(pieces[k])
+                solution[i, j] = pieces[k]
+mosaic = assemble(solution, pieces[0].width)
 
-mosaic = assemble(solution, (num_blocks_width * pieces[0].width, num_blocks_height * pieces[0].height))
+target.save('Target.png')
 mosaic.save('Mosaic.png')
