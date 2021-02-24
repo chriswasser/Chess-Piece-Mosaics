@@ -20,7 +20,7 @@ def assemble(blocks, block_size):
 
 
 def factor_pairs(number):
-    return [(x, number // x) for x in range(1, int(sqrt(number)) + 1) if number % x == 0]
+    return [(x, number // x) for x in range(1, number + 1) if number % x == 0]
 
 
 # TODO: fix method for fully non-transparent images
@@ -45,8 +45,8 @@ def min_square_bbox(images):
     return (x, x, y, y)
 
 
-piece_dir = 'Chess-Pieces2'
-image_path = 'Images/SGM-Nettetal-Logo.png'
+piece_dir = 'Chess-Pieces'
+image_path = 'Images/iSchach-Logo.png'
 num_sets = 2000
 num_pieces = 32
 block_size = 1
@@ -63,7 +63,7 @@ for pair, ratio in zip(pairs, ratios):
     diff = abs(target_ratio - ratio)
     if diff < min_diff:
         min_diff, min_pair = diff, pair
-num_blocks_width, num_blocks_height = pair
+num_blocks_width, num_blocks_height = min_pair
 
 width, height = num_blocks_width * block_size, num_blocks_height * block_size
 target = target.resize((width, height), resample=Image.LANCZOS, reducing_gap=3)
