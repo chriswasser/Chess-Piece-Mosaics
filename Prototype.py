@@ -23,7 +23,6 @@ def factor_pairs(number):
     return [(x, number // x) for x in range(1, number + 1) if number % x == 0]
 
 
-# TODO: fix method for fully non-transparent images
 def replace_transparent(transparent, colour="WHITE"):
     nontransparent = Image.new("RGBA", transparent.size, colour)
     nontransparent.paste(transparent, (0, 0), transparent)
@@ -55,7 +54,7 @@ num_blocks = num_sets * num_pieces
 pairs = factor_pairs(num_blocks)
 ratios = [width / height for width, height in pairs]
 
-target = ImageOps.grayscale(replace_transparent(Image.open(image_path)))
+target = ImageOps.grayscale(replace_transparent(Image.open(image_path).convert('RGBA')))
 target_ratio = target.width / target.height
 
 min_diff, min_pair = float('inf'), (-1, -1)
