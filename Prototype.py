@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-from itertools import chain
-from math import sqrt
+from itertools import chain, product
+from math import sqrt, floor, ceil
 import os
 from pathlib import Path
 
@@ -23,8 +23,8 @@ def factor_pairs(number):
     return [(x, number // x) for x in range(1, number + 1) if number % x == 0]
 
 
-def replace_transparent(transparent, colour="WHITE"):
-    nontransparent = Image.new("RGBA", transparent.size, colour)
+def replace_transparent(transparent, colour='WHITE'):
+    nontransparent = Image.new('RGBA', transparent.size, colour)
     nontransparent.paste(transparent, (0, 0), transparent)
     return nontransparent.convert('RGB')
 
@@ -44,18 +44,27 @@ def min_square_bbox(images):
     return (x, x, y, y)
 
 
-piece_dir = 'Chess-Pieces'
-image_path = 'Images/iSchach-Logo.png'
-num_sets = 2000
+########################################################################################################################
+# customize mosaic
+########################################################################################################################
+target_path = 'Samples/Magnus-Carlsen-Original.jpg'
+num_sets = 2847
+
+pieceset_dir = 'Chess-Piece-Sets-Ready/cburnett'
+background = {'Bright': 'rgb(169, 169, 169)', 'Dark': 'rgb(134, 134, 134)'}
+
 num_pieces = 32
 block_size = 1
 
+########################################################################################################################
+# determine the best number of block in each dimension based on the original image's aspect ratio
+########################################################################################################################
 num_blocks = num_sets * num_pieces
 pairs = factor_pairs(num_blocks)
 ratios = [width / height for width, height in pairs]
 
-target = ImageOps.grayscale(replace_transparent(Image.open(image_path).convert('RGBA')))
-target_ratio = target.width / target.height
+target_image = ImageOps.grayscale(replace_transparent(Image.open(target_path).convert('RGBA')))
+target_ratio = target_image.width / target_image.height
 
 min_diff, min_pair = float('inf'), (-1, -1)
 for pair, ratio in zip(pairs, ratios):
@@ -64,44 +73,54 @@ for pair, ratio in zip(pairs, ratios):
         min_diff, min_pair = diff, pair
 num_blocks_width, num_blocks_height = min_pair
 
-width, height = num_blocks_width * block_size, num_blocks_height * block_size
-target = target.resize((width, height), resample=Image.LANCZOS, reducing_gap=3)
-pixels = np.array(target).T
+# high quality resampling to the required dimensionality
+target_image = target_image.resize((num_blocks_width * block_size, num_blocks_height * block_size), resample=Image.LANCZOS, reducing_gap=3)
+pixels = np.array(target_image).T
 
-piece_paths = [
-    os.path.join(piece_dir, 'Black-Bishop.png'),
-    os.path.join(piece_dir, 'Black-King.png'),
-    os.path.join(piece_dir, 'Black-Knight.png'),
-    os.path.join(piece_dir, 'Black-Pawn.png'),
-    os.path.join(piece_dir, 'Black-Queen.png'),
-    os.path.join(piece_dir, 'Black-Rook.png'),
-    os.path.join(piece_dir, 'White-Bishop.png'),
-    os.path.join(piece_dir, 'White-King.png'),
-    os.path.join(piece_dir, 'White-Knight.png'),
-    os.path.join(piece_dir, 'White-Pawn.png'),
-    os.path.join(piece_dir, 'White-Queen.png'),
-    os.path.join(piece_dir, 'White-Rook.png'),
-]
-pieces = [Image.open(path) for path in piece_paths]
-bbox = min_square_bbox(pieces)
-pieces = [ImageOps.grayscale(piece.crop(bbox)) for piece in pieces]
-brightnesses = [sum(piece.getdata()) / (piece.width * piece.height) for piece in pieces]
+
+########################################################################################################################
+# read image pieces for LP
+########################################################################################################################
+colours = ['Black', 'White']
+pieces = ['Bishop', 'King', 'Knight', 'Pawn', 'Queen', 'Rook']
+
+piece_images = {
+    (colour, piece, shade): Image.open(os.path.join(pieceset_dir, f'{colour}-{piece}.png')).convert('RGBA')
+    for colour, piece, shade in product(colours, pieces, background)
+}
+bbox = min_square_bbox(list(piece_images.values()))
+piece_images = {
+    (colour, piece, shade): ImageOps.grayscale(replace_transparent(piece_image.crop(bbox), colour=background[shade]))
+    for (colour, piece, shade), piece_image in piece_images.items()
+}
+brightnesses = {
+    (colour, piece, shade): sum(piece_image.getdata()) / (piece_image.width * piece_image.height)
+    for (colour, piece, shade), piece_image in piece_images.items()
+}
 
 c = {}
 for i in range(num_blocks_width):
     for j in range(num_blocks_height):
         brightness = np.sum(pixels[i*block_size:(i+1)*block_size, j*block_size:(j+1)*block_size]) / block_size ** 2
-        for k in range(len(pieces)):
+        for k in piece_images:
             c[i, j, k] = (brightnesses[k] - brightness) ** 2
 
-per_set = {}
-for k, piece_path in enumerate(piece_paths):
-    if 'Pawn' in piece_path:
-        per_set[k] = 8
-    if 'Bishop' in piece_path or 'Knight' in piece_path or 'Rook' in piece_path:
-        per_set[k] = 2
-    if 'King' in piece_path or 'Queen' in piece_path:
-        per_set[k] = 1
+# TODO: fix per set definition considering multiple background shades
+def num_occurrences(colour, piece, shade, num_sets):
+    if 'Pawn' == piece:
+        return 4 * num_sets
+    if 'Bishop' == piece or 'Knight' == piece or 'Rook' == piece:
+        return 1 * num_sets
+    if 'King' == piece:
+        if shade == 'Bright':
+            return floor(num_sets / 2)
+        if shade == 'Dark':
+            return ceil(num_sets / 2)
+    if 'Queen' == piece:
+        if shade == 'Bright':
+            return ceil(num_sets / 2)
+        if shade == 'Dark':
+            return floor(num_sets / 2)
 
 model = grb.Model('Chess-Piece-Mosaic')
 
@@ -109,7 +128,7 @@ model = grb.Model('Chess-Piece-Mosaic')
 x = {}
 for i in range(num_blocks_width):
     for j in range(num_blocks_height):
-        for k in range(len(pieces)):
+        for k in piece_images:
             x[i, j, k] = model.addVar(obj=c[i, j, k], vtype=grb.GRB.BINARY, name=f'x_{i}_{j}_{k}')
 
 # set type of optimization
@@ -118,23 +137,25 @@ model.ModelSense = grb.GRB.MINIMIZE
 # exactly one piece per block
 for i in range(num_blocks_width):
     for j in range(num_blocks_height):
-        model.addConstr(grb.quicksum(x[i, j, k] for k in range(len(pieces))) == 1)
+        model.addConstr(grb.quicksum(x[i, j, k] for k in piece_images) == 1)
 
 # exactly one piece per block
-for k in range(len(pieces)):
-    model.addConstr(grb.quicksum(x[i, j, k] for i in range(num_blocks_width) for j in range(num_blocks_height)) == num_sets * per_set[k])
+for k in piece_images:
+    model.addConstr(grb.quicksum(x[i, j, k] for i in range(num_blocks_width) for j in range(num_blocks_height)) == num_occurrences(*k, num_sets))
 
 model.update()
 model.optimize()
 
-
+########################################################################################################################
+# write solution
+########################################################################################################################
 solution = np.empty(shape=(num_blocks_width, num_blocks_height), dtype=object)
 for i in range(num_blocks_width):
     for j in range(num_blocks_height):
-        for k in range(len(pieces)):
+        for k in piece_images:
             if x[i, j, k].X:
-                solution[i, j] = pieces[k]
-mosaic = assemble(solution, pieces[0].width)
+                solution[i, j] = piece_images[k]
+mosaic = assemble(solution, bbox[2] - bbox[0])
 
-target.save('Target.png')
+target_image.save('Target.png')
 mosaic.save('Mosaic.png')
