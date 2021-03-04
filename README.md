@@ -7,8 +7,6 @@ Half of the total amount of each piece received a light and the other half a dar
 
 <img src = "Samples/Magnus-Carlsen-Original.jpg" height = "275"/> <img src = "Samples/Magnus-Carlsen-Target.png" height = "275"/> <img src = "Samples/Magnus-Carlsen-Mosaic.png" height = "275"/>
 
-Beth Harmon: 2020 Netflix Series "Queen's Gambit" using `light-cburnett`
-
 Mosaic of Beth Harmon (played by Anya Taylor-Joy) from the 2020 Netflix series "Queen's Gambit" using 2020 complete chess piece sets.
 Half of the total amount of each piece received a light and the other half a dark background shade.
 
